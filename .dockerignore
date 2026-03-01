@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv
+venv
+ENV
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Test
+test_*.png
+*.test.py
+.pytest_cache
+.coverage
+
+# Data (mounted as volume)
+data/
+
+# Logs
+*.log
+logs/
+
+# Local config
+.env
+.env.local
+*.local
+
+# OS
+.DS_Store
+Thumbs.db

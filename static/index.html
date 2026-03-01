@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>投资避雷 - 避开雷区，守护本金</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 导航栏 -->
+    <nav class="navbar">
+      <div class="nav-brand" onclick="showHome()">
+        <span class="nav-icon">&#9889;</span>
+        <span>投资避雷</span>
+      </div>
+      <div class="nav-links">
+        <a href="#" id="nav-home" class="active" onclick="showHome(); return false;">首页</a>
+        <a href="#" id="nav-batch" onclick="showBatchPage(); return false;">批量扫描</a>
+        <a href="#" id="nav-portfolio" onclick="showPortfolioPage(); return false;">持仓分析</a>
+        <button class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="切换主题">
+          <span id="theme-icon">&#9790;</span>
+        </button>
+        <!-- 用户区域 -->
+        <div id="nav-user-area" class="nav-user-area">
+          <!-- 未登录 -->
+          <button id="nav-login-btn" class="nav-login-btn" onclick="showAuthModal('login')">登录</button>
+          <!-- 已登录（默认隐藏） -->
+          <div id="nav-user-info" class="nav-user-info" style="display:none">
+            <span id="nav-trial-badge" class="trial-badge" style="display:none"></span>
+            <div class="nav-avatar" id="nav-avatar" onclick="toggleUserMenu()"></div>
+            <div class="nav-user-menu" id="nav-user-menu" style="display:none">
+              <div class="num-nickname" id="menu-nickname"></div>
+              <div class="num-email" id="menu-email"></div>
+              <div id="menu-verify-hint" style="display:none"><button class="menu-verify-btn" onclick="openVerifyPanel(); toggleUserMenu();">验证邮箱</button></div>
+              <div class="num-divider"></div>
+              <button onclick="showSettingsModal(); toggleUserMenu();">个人设置</button>
+              <button onclick="showVIPModal(); toggleUserMenu();">升级 PRO</button>
+              <button onclick="doLogout()">退出登录</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </nav>
+
+    <!-- 首页 -->
+    <section id="page-home" class="page active">
+      <div class="hero">
+        <div class="hero-badges">
+          <span class="hero-badge">Nobel Prize Models</span>
+          <span class="hero-badge gold">Fama-French 五因子</span>
+          <span class="hero-badge">Markowitz-Sharpe</span>
+        </div>
+        <h1>投资避雷</h1>
+        <p class="hero-sub">机构级量化风控引擎 &middot; 让散户拥有华尔街同款风险雷达</p>
+        <p class="hero-desc">基于诺贝尔经济学奖获奖理论，融合 Fama-French 五因子模型、Markowitz 现代投资组合理论、<br>Black-Scholes 波动率框架，为每只股票生成多维度量化风险评估报告</p>
+        <div class="search-box">
+          <div class="search-input-wrap">
+            <input
+              type="text"
+              id="search-input"
+              placeholder="输入股票代码或名称，立即获取量化风控报告"
+              autocomplete="off"
+            />
+            <div class="search-dropdown" id="search-dropdown"></div>
+          </div>
+          <button id="search-btn" onclick="doScan()">立即扫描</button>
+        </div>
+        <div class="quick-tags">
+          <span>快速体验：</span>
+          <button class="tag" onclick="quickScan('600519')">600519 贵州茅台</button>
+          <button class="tag" onclick="quickScan('000002')">000002 万科A</button>
+          <button class="tag" onclick="quickScan('300750')">300750 宁德时代</button>
+          <button class="tag" onclick="quickScan('002594')">002594 比亚迪</button>
+          <button class="tag" onclick="quickScan('000001')">000001 平安银行</button>
+          <button class="tag" onclick="quickScan('601398')">601398 工商银行</button>
+        </div>
+      </div>
+
+      <!-- 扫描数据看板 -->
+      <div class="dashboard-section" id="dashboard-section" style="display:none">
+        <div class="dashboard-header">
+          <h3>风险扫描仪表盘</h3>
+          <span class="dashboard-badge">Dashboard</span>
+        </div>
+        <div class="dashboard-grid">
+          <div class="dash-card dash-gauge">
+            <div class="dash-gauge-chart" id="dash-gauge-chart"></div>
+            <div class="dash-gauge-label">组合健康度</div>
+          </div>
+          <div class="dash-card dash-stats">
+            <div class="dash-stat-row">
+              <span class="dash-stat-icon" style="color:var(--accent)">&#9632;</span>
+              <span class="dash-stat-label">累计扫描</span>
+              <span class="dash-stat-value" id="dash-total">0</span>
+            </div>
+            <div class="dash-stat-row">
+              <span class="dash-stat-icon" style="color:var(--green)">&#9632;</span>
+              <span class="dash-stat-label">安全</span>
+              <span class="dash-stat-value" id="dash-safe-count">0</span>
+            </div>
+            <div class="dash-stat-row">
+              <span class="dash-stat-icon" style="color:var(--yellow)">&#9632;</span>
+              <span class="dash-stat-label">注意</span>
+              <span class="dash-stat-value" id="dash-caution-count">0</span>
+            </div>
+            <div class="dash-stat-row">
+              <span class="dash-stat-icon" style="color:var(--red)">&#9632;</span>
+              <span class="dash-stat-label">危险/警惕</span>
+              <span class="dash-stat-value" id="dash-danger-count">0</span>
+            </div>
+          </div>
+          <div class="dash-card dash-dist">
+            <div class="dash-dist-title">评分分布</div>
+            <div class="dash-dist-bars" id="dash-dist-bars"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 最近扫描 -->
+      <div class="recent-section" id="recent-section" style="display:none">
+        <div class="recent-header">
+          <h3>最近扫描</h3>
+          <button class="recent-clear" onclick="clearHistory()">清空记录</button>
+        </div>
+        <div class="recent-list" id="recent-list"></div>
+      </div>
+
+      <!-- 自选股 -->
+      <div class="watchlist-section" id="watchlist-section" style="display:none">
+        <div class="recent-header">
+          <h3>我的自选</h3>
+          <button class="recent-clear" onclick="clearWatchlist()">清空自选</button>
+        </div>
+        <div class="recent-list" id="watchlist-list"></div>
+      </div>
+
+      <!-- 核心能力 -->
+      <div class="core-models">
+        <div class="core-models-title">
+          <span class="core-line"></span>
+          <span>核心量化模型</span>
+          <span class="core-line"></span>
+        </div>
+        <div class="model-cards">
+          <div class="model-card">
+            <div class="mc-nobel">Nobel 2013</div>
+            <h3>Fama-French 五因子模型</h3>
+            <p class="mc-author">Eugene Fama &amp; Kenneth French</p>
+            <p class="mc-desc">通过市场因子(Beta)、规模因子(SMB)、价值因子(HML)、盈利因子(RMW)、投资因子(CMA)五维度解构股票收益来源，识别被高估或低估的风险暴露。</p>
+            <div class="mc-tags">
+              <span>Alpha</span><span>Beta</span><span>HML</span><span>RMW</span><span>CMA</span>
+            </div>
+          </div>
+          <div class="model-card">
+            <div class="mc-nobel">Nobel 1990</div>
+            <h3>Markowitz-Sharpe 风险度量</h3>
+            <p class="mc-author">Harry Markowitz &amp; William Sharpe</p>
+            <p class="mc-desc">现代投资组合理论奠基之作。计算 Sharpe Ratio、Sortino Ratio、VaR、CVaR、最大回撤等机构级风险指标，量化尾部风险与下行概率。</p>
+            <div class="mc-tags">
+              <span>Sharpe</span><span>VaR 95%</span><span>Max DD</span><span>Sortino</span>
+            </div>
+          </div>
+          <div class="model-card">
+            <div class="mc-nobel">AQR Capital</div>
+            <h3>Cross-Sectional Momentum</h3>
+            <p class="mc-author">Jegadeesh &amp; Titman (1993)</p>
+            <p class="mc-desc">量价共振分析引擎。追踪5日/20日/60日/120日多周期动量、RSI超买超卖、量价背离信号，捕捉主力资金动向与趋势拐点。</p>
+            <div class="mc-tags">
+              <span>RSI</span><span>Momentum</span><span>量价背离</span><span>OBV</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 数据背书 -->
+      <div class="trust-strip">
+        <div class="trust-item">
+          <div class="trust-num" id="trust-stocks">4,000+</div>
+          <div class="trust-label">覆盖 A 股标的</div>
+        </div>
+        <div class="trust-divider"></div>
+        <div class="trust-item">
+          <div class="trust-num">11</div>
+          <div class="trust-label">风险维度扫描</div>
+        </div>
+        <div class="trust-divider"></div>
+        <div class="trust-item">
+          <div class="trust-num">27+</div>
+          <div class="trust-label">量化因子指标</div>
+        </div>
+        <div class="trust-divider"></div>
+        <div class="trust-item">
+          <div class="trust-num">3</div>
+          <div class="trust-label">诺贝尔奖模型</div>
+        </div>
+      </div>
+
+      <!-- 为什么选我们 -->
+      <div class="why-section">
+        <h2 class="why-title">为什么专业投资者选择我们？</h2>
+        <div class="features">
+          <div class="feature-card">
+            <div class="feature-icon fc-icon-quant"></div>
+            <h3>机构级量化引擎</h3>
+            <p>同款华尔街对冲基金使用的 Fama-French 五因子、Sharpe Ratio、VaR 风险模型，不再靠感觉炒股</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon fc-icon-risk"></div>
+            <h3>11维风险透视</h3>
+            <p>ST退市预警、连续亏损、现金流枯竭、股权质押、商誉爆雷、大股东减持...一键扫描全部风险盲区</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon fc-icon-smart"></div>
+            <h3>Smart Money 追踪</h3>
+            <p>Chaikin Money Flow + OBV 量能分析，实时追踪主力资金吸筹/出货信号，识别量价背离拐点</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- CTA -->
+      <div class="cta-banner">
+        <div class="cta-text">
+          <span class="cta-badge">限时免费</span>
+          量化因子分析模块现已开放体验，包含完整的 Fama-French 五因子 + Markowitz 风险度量
+        </div>
+        <button class="cta-btn" onclick="document.getElementById('search-input').focus(); window.scrollTo({top:0,behavior:'smooth'})">立即体验</button>
+      </div>
+
+      <!-- Footer -->
+      <footer class="site-footer">
+        <div class="footer-inner">
+          <div class="footer-brand">
+            <span class="footer-logo">&#9889; 投资避雷</span>
+            <p>机构级量化风控引擎</p>
+          </div>
+          <div class="footer-cols">
+            <div class="footer-col">
+              <h4>核心能力</h4>
+              <span>Fama-French 五因子</span>
+              <span>Markowitz 风险度量</span>
+              <span>动量因子分析</span>
+              <span>Smart Money 追踪</span>
+            </div>
+            <div class="footer-col">
+              <h4>风险维度</h4>
+              <span>ST退市预警</span>
+              <span>连续亏损检测</span>
+              <span>股权质押分析</span>
+              <span>商誉爆雷预警</span>
+            </div>
+            <div class="footer-col">
+              <h4>数据来源</h4>
+              <span>AKShare 开源数据</span>
+              <span>同花顺 iFinD</span>
+              <span>沪深交易所公告</span>
+              <span>实时行情接口</span>
+            </div>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <span>投资有风险，入市需谨慎。本平台数据仅供参考，不构成投资建议。</span>
+          <span>&#169; 2025 投资避雷 &middot; All Rights Reserved</span>
+        </div>
+      </footer>
+    </section>
+
+    <!-- 加载中 -->
+    <section id="page-loading" class="page">
+      <div class="loading-container">
+        <div class="loading-radar">
+          <div class="radar-ring r1"></div>
+          <div class="radar-ring r2"></div>
+          <div class="radar-ring r3"></div>
+          <div class="radar-sweep"></div>
+          <div class="radar-dot"></div>
+        </div>
+        <p class="loading-text" id="loading-text">正在扫描风险数据...</p>
+        <div class="loading-steps" id="loading-steps">
+          <div class="ls-item active" id="ls-1"><span class="ls-dot"></span>采集行情数据</div>
+          <div class="ls-item" id="ls-2"><span class="ls-dot"></span>分析财务指标</div>
+          <div class="ls-item" id="ls-3"><span class="ls-dot"></span>计算量化因子</div>
+          <div class="ls-item" id="ls-4"><span class="ls-dot"></span>生成风险报告</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 扫描结果页 -->
+    <section id="page-result" class="page">
+      <div class="result-container">
+        <!-- 头部信息 -->
+        <div class="result-header">
+          <button class="back-btn" id="back-btn" onclick="goBack()">&larr; 返回</button>
+          <div class="stock-info">
+            <h2 id="result-name"></h2>
+            <span id="result-code" class="stock-code"></span>
+          </div>
+          <div class="result-actions">
+            <button class="action-btn" id="fav-btn" onclick="toggleFavorite()" title="收藏">
+              <span id="fav-icon">&#9734;</span>
+            </button>
+            <button class="action-btn" id="share-btn" onclick="shareReport()" title="分享报告">
+              <span>&#128279;</span>
+            </button>
+            <button class="action-btn" id="export-btn" onclick="exportReport()" title="导出图片">
+              <span>&#128247;</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- 评分卡片 -->
+        <div class="score-card" id="score-card">
+          <div class="score-ring-wrap">
+            <svg class="score-ring" viewBox="0 0 120 120">
+              <circle class="ring-bg" cx="60" cy="60" r="52" />
+              <circle class="ring-fg" id="ring-fg" cx="60" cy="60" r="52" />
+            </svg>
+            <div class="score-value" id="score-value">--</div>
+          </div>
+          <div class="score-meta">
+            <div class="risk-level" id="risk-level">--</div>
+            <p class="summary" id="summary"></p>
+            <div class="risk-stats" id="risk-stats"></div>
+          </div>
+        </div>
+
+        <!-- 迷你走势图 -->
+        <div class="sparkline-section" id="sparkline-section" style="display:none">
+          <div class="sparkline-header">
+            <span class="sparkline-title">近60日走势</span>
+            <span class="sparkline-price" id="sparkline-price"></span>
+          </div>
+          <div class="sparkline-chart" id="sparkline-chart"></div>
+        </div>
+
+        <!-- 风险明细 -->
+        <h3 class="section-title">风险明细</h3>
+        <div class="risk-items" id="risk-items"></div>
+
+        <!-- 风险雷达图 -->
+        <div id="risk-radar-container"></div>
+
+        <!-- 量化因子分析 -->
+        <div class="quant-section" id="quant-section" style="display:none"></div>
+
+        <!-- 底部建议 -->
+        <div class="result-advice" id="result-advice"></div>
+
+        <!-- 底部提示 -->
+        <div class="disclaimer">
+          以上数据仅供参考，不构成投资建议。投资有风险，入市需谨慎。
+        </div>
+      </div>
+    </section>
+
+    <!-- 批量扫描页 -->
+    <section id="page-batch" class="page">
+      <div class="batch-container">
+        <div class="batch-hero">
+          <h2>批量风险扫描</h2>
+          <p class="batch-desc">输入多个股票代码，一键生成组合风险全景报告</p>
+        </div>
+
+        <!-- 预设组合 -->
+        <div class="batch-presets">
+          <span class="batch-presets-label">热门组合：</span>
+          <button class="batch-preset-tag" onclick="fillPreset('600519,000858,000568,603369')">白酒龙头</button>
+          <button class="batch-preset-tag" onclick="fillPreset('300750,002594,601012,600438')">新能源链</button>
+          <button class="batch-preset-tag" onclick="fillPreset('000001,601398,600036,601318')">金融蓝筹</button>
+          <button class="batch-preset-tag" onclick="fillPreset('000002,001979,600048,001979')">地产板块</button>
+          <button class="batch-preset-tag" onclick="fillPreset('600519,000002,300750,000001,002594,601398')">综合测试</button>
+        </div>
+
+        <div class="batch-input-wrap">
+          <textarea
+            id="batch-input"
+            placeholder="输入股票代码，逗号分隔，如：000001,600519,300750&#10;最多支持10只股票同时扫描"
+            rows="3"
+          ></textarea>
+          <div class="batch-input-actions">
+            <span class="batch-count" id="batch-count">已输入 0 只</span>
+            <button class="batch-btn" onclick="doBatchScan()">开始批量扫描</button>
+          </div>
+        </div>
+
+        <!-- 扫描进度 -->
+        <div id="batch-progress" class="batch-progress" style="display:none">
+          <div class="batch-progress-header">
+            <span id="batch-progress-text">正在扫描...</span>
+            <span id="batch-progress-num" class="batch-progress-num">0/0</span>
+          </div>
+          <div class="batch-progress-bar">
+            <div class="batch-progress-fill" id="batch-progress-fill" style="width:0%"></div>
+          </div>
+        </div>
+
+        <!-- 统计面板 -->
+        <div id="batch-summary" class="batch-summary" style="display:none">
+          <div class="batch-summary-item bsi-danger">
+            <div class="bsi-num" id="bsi-danger-num">0</div>
+            <div class="bsi-label">危险</div>
+          </div>
+          <div class="batch-summary-item bsi-warning">
+            <div class="bsi-num" id="bsi-warning-num">0</div>
+            <div class="bsi-label">警惕</div>
+          </div>
+          <div class="batch-summary-item bsi-caution">
+            <div class="bsi-num" id="bsi-caution-num">0</div>
+            <div class="bsi-label">注意</div>
+          </div>
+          <div class="batch-summary-item bsi-safe">
+            <div class="bsi-num" id="bsi-safe-num">0</div>
+            <div class="bsi-label">安全</div>
+          </div>
+        </div>
+
+        <!-- 结果列表 -->
+        <div id="batch-results" class="batch-results"></div>
+
+        <!-- 对比面板（扫描完成后显示） -->
+        <div id="batch-compare" class="batch-compare" style="display:none">
+          <div class="compare-header">
+            <h3>组合对比分析</h3>
+            <span class="compare-badge">PRO</span>
+          </div>
+          <!-- 雷达叠加图 -->
+          <div class="compare-radar-wrap">
+            <div class="compare-radar-chart" id="compare-radar-chart"></div>
+            <div class="compare-legend" id="compare-legend"></div>
+          </div>
+          <!-- 指标对比表 -->
+          <div class="compare-table-wrap">
+            <table class="compare-table" id="compare-table">
+              <thead id="compare-thead"></thead>
+              <tbody id="compare-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 持仓分析页 -->
+    <section id="page-portfolio" class="page">
+      <div class="portfolio-container">
+        <div class="pf-hero">
+          <h2>持仓组合分析</h2>
+          <p class="pf-desc">输入持仓明细，获取组合级量化风控报告 <span class="pf-desc-badge">Portfolio Risk</span></p>
+        </div>
+
+        <!-- 添加持仓 -->
+        <div class="pf-add-bar">
+          <div class="pf-add-input-wrap">
+            <input type="text" id="pf-code" placeholder="股票代码" autocomplete="off" />
+            <div class="search-dropdown" id="pf-search-dropdown"></div>
+          </div>
+          <input type="number" id="pf-shares" placeholder="持仓(股)" min="100" step="100" />
+          <button class="pf-add-btn" onclick="addPfStock()">+ 添加</button>
+        </div>
+
+        <!-- 快速导入 -->
+        <div class="pf-quick-presets">
+          <span>示例组合：</span>
+          <button onclick="loadPfPreset('balanced')">均衡配置</button>
+          <button onclick="loadPfPreset('aggressive')">进攻型</button>
+          <button onclick="loadPfPreset('defensive')">防御型</button>
+        </div>
+
+        <!-- 持仓列表 -->
+        <div id="pf-holdings-wrap" class="pf-holdings-wrap" style="display:none">
+          <div class="pf-holdings-header">
+            <h3>当前持仓 <span id="pf-holdings-count" class="pf-count-badge">0</span> 只</h3>
+            <button class="recent-clear" onclick="clearPortfolio()">清空持仓</button>
+          </div>
+          <table class="pf-table" id="pf-table">
+            <thead>
+              <tr>
+                <th>代码</th>
+                <th>名称</th>
+                <th>持仓(股)</th>
+                <th>权重</th>
+                <th>评分</th>
+                <th>风险</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="pf-tbody"></tbody>
+          </table>
+          <button class="pf-analyze-btn" id="pf-analyze-btn" onclick="analyzePortfolio()">分析组合风险</button>
+        </div>
+
+        <!-- 分析进度 -->
+        <div id="pf-progress" class="batch-progress" style="display:none">
+          <div class="batch-progress-header">
+            <span id="pf-progress-text">正在分析...</span>
+            <span id="pf-progress-num" class="batch-progress-num">0/0</span>
+          </div>
+          <div class="batch-progress-bar">
+            <div class="batch-progress-fill" id="pf-progress-fill" style="width:0%"></div>
+          </div>
+        </div>
+
+        <!-- 组合分析结果 -->
+        <div id="pf-result" class="pf-result" style="display:none">
+          <div class="pf-result-header">
+            <h3>组合风险评估报告</h3>
+            <span class="compare-badge">Portfolio</span>
+          </div>
+          <!-- 组合评分 -->
+          <div class="pf-score-panel" id="pf-score-panel"></div>
+          <!-- 持仓配比图 -->
+          <div class="pf-alloc-section">
+            <h4>持仓配比</h4>
+            <div class="pf-alloc-chart" id="pf-alloc-chart"></div>
+          </div>
+          <!-- 组合指标 -->
+          <div class="pf-metrics-section" id="pf-metrics-section"></div>
+          <!-- 风险分解 -->
+          <div class="pf-risk-breakdown" id="pf-risk-breakdown"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 错误页 -->
+    <section id="page-error" class="page">
+      <div class="error-container">
+        <div class="error-icon">&#10060;</div>
+        <h2>扫描失败</h2>
+        <p id="error-msg"></p>
+        <button class="retry-btn" onclick="showHome()">返回重试</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- 移动端底部导航 -->
+  <nav class="mobile-bottom-nav" id="mobile-bottom-nav">
+    <button class="mbn-item active" id="mbn-home" onclick="showHome()">
+      <span class="mbn-icon">&#9889;</span>
+      <span class="mbn-label">首页</span>
+    </button>
+    <button class="mbn-item" id="mbn-batch" onclick="showBatchPage()">
+      <span class="mbn-icon">&#9776;</span>
+      <span class="mbn-label">批量</span>
+    </button>
+    <button class="mbn-item" id="mbn-portfolio" onclick="showPortfolioPage()">
+      <span class="mbn-icon">&#9733;</span>
+      <span class="mbn-label">持仓</span>
+    </button>
+  </nav>
+
+  <!-- 键盘快捷键提示 -->
+  <div id="kbd-overlay" class="kbd-overlay" style="display:none" onclick="if(event.target===this)closeKbd()">
+    <div class="kbd-box">
+      <h3>键盘快捷键</h3>
+      <div class="kbd-list">
+        <div class="kbd-row"><kbd>/</kbd> <span>聚焦搜索框</span></div>
+        <div class="kbd-row"><kbd>Esc</kbd> <span>关闭弹窗 / 返回</span></div>
+        <div class="kbd-row"><kbd>B</kbd> <span>批量扫描页</span></div>
+        <div class="kbd-row"><kbd>P</kbd> <span>持仓分析页</span></div>
+        <div class="kbd-row"><kbd>H</kbd> <span>返回首页</span></div>
+        <div class="kbd-row"><kbd>?</kbd> <span>显示快捷键</span></div>
+      </div>
+      <button class="kbd-close" onclick="closeKbd()">关闭</button>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+
+  <!-- 登录/注册弹窗 -->
+  <div id="auth-modal" class="auth-modal" style="display:none" onclick="if(event.target===this)closeAuthModal()">
+    <div class="auth-modal-box">
+      <button class="vip-modal-close" onclick="closeAuthModal()">&times;</button>
+      <div class="auth-header">
+        <span class="auth-header-icon">&#9889;</span>
+        <h2>投资避雷</h2>
+        <p>登录后解锁 7 天 PRO 免费试用</p>
+      </div>
+      <div class="auth-tabs" id="auth-tabs">
+        <button class="auth-tab active" id="auth-tab-login" onclick="switchAuthTab('login')">登录</button>
+        <button class="auth-tab" id="auth-tab-register" onclick="switchAuthTab('register')">注册</button>
+      </div>
+      <div class="auth-error" id="auth-error" style="display:none"></div>
+      <!-- 登录表单 -->
+      <form id="auth-login-form" class="auth-form" onsubmit="doLogin(event)">
+        <input type="email" id="login-email" placeholder="邮箱" required autocomplete="email" />
+        <input type="password" id="login-password" placeholder="密码" required autocomplete="current-password" />
+        <button type="submit" class="auth-submit" id="login-submit-btn">登录</button>
+        <div class="auth-forgot-link"><a href="#" onclick="showForgotPanel(); return false;">忘记密码？</a></div>
+      </form>
+      <!-- OAuth 第三方登录 -->
+      <div id="oauth-section" class="oauth-section" style="display:none">
+        <div class="oauth-divider"><span>或使用以下方式登录</span></div>
+        <div class="oauth-buttons" id="oauth-buttons"></div>
+      </div>
+      <!-- 注册表单 -->
+      <form id="auth-register-form" class="auth-form" style="display:none" onsubmit="doRegister(event)">
+        <input type="email" id="reg-email" placeholder="邮箱" required autocomplete="email" />
+        <input type="text" id="reg-nickname" placeholder="昵称（选填）" autocomplete="nickname" />
+        <input type="password" id="reg-password" placeholder="密码（至少6位）" required minlength="6" autocomplete="new-password" />
+        <button type="submit" class="auth-submit" id="reg-submit-btn">注册并开始试用</button>
+      </form>
+      <!-- 邮箱验证面板（注册成功后显示） -->
+      <div id="auth-verify-panel" class="auth-verify-panel" style="display:none">
+        <div class="verify-icon">&#9993;</div>
+        <h3>验证您的邮箱</h3>
+        <p class="verify-desc">验证码已发送至 <strong id="verify-email-display"></strong></p>
+        <div class="verify-code-row">
+          <input type="text" id="verify-code-input" class="verify-code-input" placeholder="输入 6 位验证码" maxlength="6" autocomplete="one-time-code" />
+          <button type="button" class="verify-submit-btn" id="verify-submit-btn" onclick="doVerifyEmail()">验证</button>
+        </div>
+        <div class="verify-actions">
+          <button type="button" class="verify-resend-btn" id="verify-resend-btn" onclick="doResendCode()">重新发送</button>
+          <button type="button" class="verify-skip-btn" onclick="skipVerify()">稍后验证</button>
+        </div>
+        <p class="verify-hint" id="verify-hint"></p>
+      </div>
+      <!-- 忘记密码面板 -->
+      <div id="auth-forgot-panel" class="auth-verify-panel" style="display:none">
+        <div class="verify-icon">&#128274;</div>
+        <h3>重置密码</h3>
+        <p class="verify-desc">输入注册邮箱，我们将发送验证码</p>
+        <form id="forgot-form" onsubmit="doForgotPassword(event)">
+          <input type="email" id="forgot-email" placeholder="注册邮箱" required autocomplete="email" />
+          <button type="submit" class="auth-submit" id="forgot-submit-btn">发送验证码</button>
+        </form>
+        <div class="verify-actions">
+          <button type="button" class="verify-skip-btn" onclick="backToLogin()">返回登录</button>
+        </div>
+        <p class="verify-hint" id="forgot-hint"></p>
+      </div>
+      <!-- 重置密码面板 -->
+      <div id="auth-reset-panel" class="auth-verify-panel" style="display:none">
+        <div class="verify-icon">&#128273;</div>
+        <h3>设置新密码</h3>
+        <p class="verify-desc">验证码已发送至 <strong id="reset-email-display"></strong></p>
+        <form id="reset-form" onsubmit="doResetPassword(event)">
+          <input type="text" id="reset-code" class="verify-code-input" placeholder="6位验证码" maxlength="6" required autocomplete="one-time-code" />
+          <input type="password" id="reset-password" placeholder="新密码（至少6位）" required minlength="6" autocomplete="new-password" />
+          <button type="submit" class="auth-submit" id="reset-submit-btn">确认重置</button>
+        </form>
+        <div class="verify-actions">
+          <button type="button" class="verify-resend-btn" id="reset-resend-btn" onclick="doResendResetCode()">重新发送</button>
+          <button type="button" class="verify-skip-btn" onclick="backToLogin()">返回登录</button>
+        </div>
+        <p class="verify-hint" id="reset-hint"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIP 弹窗 -->
+  <div id="vip-modal" class="vip-modal" style="display:none" onclick="if(event.target===this)closeVIPModal()">
+    <div class="vip-modal-box">
+      <button class="vip-modal-close" onclick="closeVIPModal()">&times;</button>
+      <div class="vip-modal-header">
+        <div class="vip-crown">&#9733;</div>
+        <h2>升级 PRO 会员</h2>
+        <p>解锁全部量化因子 · 掌握机构级投资情报</p>
+      </div>
+
+      <div class="vip-features">
+        <div class="vip-feat-item"><span class="vip-feat-check">&#10003;</span> Fama-French 五因子模型 <span class="vip-feat-free">免费</span></div>
+        <div class="vip-feat-item"><span class="vip-feat-check">&#10003;</span> Markowitz-Sharpe 风险度量 <span class="vip-feat-free">免费</span></div>
+        <div class="vip-feat-item vip-feat-pro"><span class="vip-feat-check pro">&#10003;</span> Cross-Sectional Momentum 动量分析 <span class="vip-feat-tag">PRO</span></div>
+        <div class="vip-feat-item vip-feat-pro"><span class="vip-feat-check pro">&#10003;</span> Smart Money Flow 主力资金追踪 <span class="vip-feat-tag">PRO</span></div>
+        <div class="vip-feat-item vip-feat-pro"><span class="vip-feat-check pro">&#10003;</span> 量价背离 / RSI 超买超卖信号 <span class="vip-feat-tag">PRO</span></div>
+        <div class="vip-feat-item vip-feat-pro"><span class="vip-feat-check pro">&#10003;</span> 主力吸筹/出货实时信号 <span class="vip-feat-tag">PRO</span></div>
+        <div class="vip-feat-item vip-feat-pro"><span class="vip-feat-check pro">&#10003;</span> 批量组合风险对比报告 <span class="vip-feat-tag">PRO</span></div>
+      </div>
+
+      <div id="vip-plans">
+        <div class="vip-pricing">
+          <div class="vip-plan">
+            <div class="vip-plan-name">月度会员</div>
+            <div class="vip-plan-price"><span class="vip-currency">&yen;</span>29<span class="vip-period">/月</span></div>
+            <button class="vip-plan-btn" onclick="createOrder('monthly')">立即开通</button>
+          </div>
+          <div class="vip-plan vip-plan-hot">
+            <div class="vip-plan-badge">最受欢迎</div>
+            <div class="vip-plan-name">年度会员</div>
+            <div class="vip-plan-price"><span class="vip-currency">&yen;</span>199<span class="vip-period">/年</span></div>
+            <div class="vip-plan-save">省 149 元 · 相当于 &yen;16.6/月</div>
+            <button class="vip-plan-btn hot" onclick="createOrder('yearly')">立即开通</button>
+          </div>
+          <div class="vip-plan">
+            <div class="vip-plan-name">终身会员</div>
+            <div class="vip-plan-price"><span class="vip-currency">&yen;</span>399<span class="vip-period">永久</span></div>
+            <button class="vip-plan-btn" onclick="createOrder('lifetime')">立即开通</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="vip-payment" style="display:none">
+        <div class="payment-panel"></div>
+      </div>
+
+      <p class="vip-modal-note">* 沙盒测试模式，注册即享 7 天 PRO 免费试用</p>
+    </div>
+  </div>
+
+  <!-- 个人设置弹窗 -->
+  <div id="settings-modal" class="auth-modal" style="display:none" onclick="if(event.target===this)closeSettingsModal()">
+    <div class="auth-modal-box" style="max-width:420px">
+      <button class="vip-modal-close" onclick="closeSettingsModal()">&times;</button>
+      <div class="auth-header">
+        <span class="auth-header-icon">&#9881;</span>
+        <h2>个人设置</h2>
+      </div>
+      <div class="settings-tabs">
+        <button class="settings-tab active" id="settings-tab-profile" onclick="switchSettingsTab('profile')">个人资料</button>
+        <button class="settings-tab" id="settings-tab-password" onclick="switchSettingsTab('password')">修改密码</button>
+      </div>
+      <div class="settings-error" id="settings-error" style="display:none"></div>
+      <div class="settings-success" id="settings-success" style="display:none"></div>
+      <!-- 个人资料表单 -->
+      <form id="settings-profile-form" class="auth-form" onsubmit="doUpdateProfile(event)">
+        <label class="settings-label">邮箱</label>
+        <input type="email" id="settings-email" disabled />
+        <label class="settings-label">昵称</label>
+        <input type="text" id="settings-nickname" placeholder="昵称" maxlength="20" />
+        <button type="submit" class="auth-submit" id="profile-submit-btn">保存修改</button>
+      </form>
+      <!-- 修改密码表单 -->
+      <form id="settings-password-form" class="auth-form" style="display:none" onsubmit="doChangePassword(event)">
+        <label class="settings-label">原密码</label>
+        <input type="password" id="settings-old-password" placeholder="输入原密码" required />
+        <label class="settings-label">新密码</label>
+        <input type="password" id="settings-new-password" placeholder="新密码（至少6位）" required minlength="6" />
+        <label class="settings-label">确认新密码</label>
+        <input type="password" id="settings-confirm-password" placeholder="再次输入新密码" required minlength="6" />
+        <button type="submit" class="auth-submit" id="password-submit-btn">修改密码</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>
