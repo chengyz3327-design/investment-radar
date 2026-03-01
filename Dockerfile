@@ -30,7 +30,7 @@ EXPOSE 8000
 
 # 健康检查
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8000/health')" || exit 1
+    CMD python -c "import httpx; httpx.get('http://localhost:${PORT:-8000}/health')" || exit 1
 
-# 启动命令
-CMD ["python", "main.py", "--api", "--port", "8000"]
+# 启动命令 - 使用 PORT 环境变量（Railway 动态分配）
+CMD python main.py --api --port ${PORT:-8000}
