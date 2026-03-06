@@ -179,6 +179,11 @@ async function doLogin(e) {
 
 async function doRegister(e) {
   e.preventDefault();
+  const agree = document.getElementById("reg-agree");
+  if (agree && !agree.checked) {
+    showAuthError("请先阅读并同意用户协议和隐私政策");
+    return;
+  }
   const email = document.getElementById("reg-email").value.trim();
   const nickname = document.getElementById("reg-nickname").value.trim();
   const password = document.getElementById("reg-password").value;
@@ -670,7 +675,7 @@ async function createOrder(planType) {
   try {
     const resp = await apiFetch(`${API_BASE}/user/orders`, {
       method: "POST",
-      body: { plan_type: planType },
+      body: { plan_type: planType, payment_method: "wechat" },
     });
     const json = await resp.json();
     if (!resp.ok) throw new Error(json.detail || "创建订单失败");
@@ -681,6 +686,9 @@ async function createOrder(planType) {
     showToast(err.message);
   }
 }
+
+/** 支付状态轮询定时器 */
+let _paymentPollTimer = null;
 
 /** 显示支付面板 */
 function showPaymentPanel(orderData) {
@@ -715,15 +723,35 @@ function showPaymentPanel(orderData) {
         <button class="payment-cancel-btn" onclick="cancelPayment()">取消</button>
       </div>
     `;
+  } else if (payment.code_url) {
+    // 微信支付 Native 模式：生成二维码
+    panel.innerHTML = `
+      <div class="payment-info">
+        <h3>微信扫码支付</h3>
+        <div class="payment-plan">${plan.name}</div>
+        <div class="payment-amount">${payment.amount_yuan}</div>
+        <div class="payment-qr-wrap" id="payment-qr-wrap"></div>
+        <p class="payment-hint">请使用微信扫描二维码完成支付</p>
+        <p class="payment-poll-status" id="payment-poll-status">等待支付中...</p>
+      </div>
+      <div class="payment-actions">
+        <button class="payment-check-btn" onclick="checkPaymentStatus('${order_no}')">我已支付</button>
+        <button class="payment-cancel-btn" onclick="cancelPayment()">取消</button>
+      </div>
+    `;
+    // 生成 QR Code
+    renderQRCode(payment.code_url, document.getElementById("payment-qr-wrap"));
+    // 启动轮询
+    startPaymentPolling(order_no);
   } else if (payment.qr_code) {
-    // 生产模式：显示支付二维码
+    // 后备：直接二维码图片
     panel.innerHTML = `
       <div class="payment-info">
         <h3>扫码支付</h3>
         <div class="payment-plan">${plan.name}</div>
         <div class="payment-amount">${plan.price_yuan}</div>
         <img src="${payment.qr_code}" alt="支付二维码" class="payment-qrcode" />
-        <p class="payment-hint">请使用支付宝或微信扫码</p>
+        <p class="payment-hint">请使用微信扫码</p>
       </div>
       <div class="payment-actions">
         <button class="payment-check-btn" onclick="checkPaymentStatus('${order_no}')">我已支付</button>
@@ -745,6 +773,82 @@ function showPaymentPanel(orderData) {
   }
 
   document.getElementById("vip-payment").style.display = "block";
+}
+
+/** 简易 QR Code 生成（使用 Canvas） */
+function renderQRCode(text, container) {
+  // 使用外部 QR 库（动态加载）
+  if (!window._qrScriptLoaded) {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js";
+    script.onload = function() {
+      window._qrScriptLoaded = true;
+      _doRenderQR(text, container);
+    };
+    script.onerror = function() {
+      // 降级：显示链接
+      container.innerHTML = `<p style="color:var(--text2);font-size:.8rem;word-break:break-all;">二维码加载失败，请复制链接在微信中打开：<br>${text}</p>`;
+    };
+    document.head.appendChild(script);
+  } else {
+    _doRenderQR(text, container);
+  }
+}
+
+function _doRenderQR(text, container) {
+  try {
+    var qr = qrcode(0, "M");
+    qr.addData(text);
+    qr.make();
+    container.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 4 });
+    // 样式修正
+    var svg = container.querySelector("svg");
+    if (svg) {
+      svg.style.width = "200px";
+      svg.style.height = "200px";
+      svg.style.background = "#fff";
+      svg.style.borderRadius = "8px";
+      svg.style.padding = "8px";
+    }
+  } catch(e) {
+    container.innerHTML = `<p style="color:var(--text2);font-size:.8rem;">二维码生成失败</p>`;
+  }
+}
+
+/** 轮询支付状态 */
+function startPaymentPolling(orderNo) {
+  stopPaymentPolling();
+  let count = 0;
+  const maxCount = 100; // 最多 5 分钟（每 3 秒一次）
+  _paymentPollTimer = setInterval(async () => {
+    count++;
+    if (count > maxCount) {
+      stopPaymentPolling();
+      const el = document.getElementById("payment-poll-status");
+      if (el) el.textContent = "支付超时，请重新下单";
+      return;
+    }
+    try {
+      const resp = await apiFetch(`${API_BASE}/payment/order-status/${orderNo}`);
+      const json = await resp.json();
+      if (json.status === "paid") {
+        stopPaymentPolling();
+        if (json.user) {
+          _authState.user = json.user;
+          updateNavUser();
+        }
+        closeVIPModal();
+        showToast("支付成功！VIP 已激活");
+      }
+    } catch(e) { /* 忽略轮询异常 */ }
+  }, 3000);
+}
+
+function stopPaymentPolling() {
+  if (_paymentPollTimer) {
+    clearInterval(_paymentPollTimer);
+    _paymentPollTimer = null;
+  }
 }
 
 /** 沙盒模式模拟支付 */
@@ -796,6 +900,7 @@ async function checkPaymentStatus(orderNo) {
 
 /** 取消支付 */
 function cancelPayment() {
+  stopPaymentPolling();
   const plansEl = document.getElementById("vip-plans");
   const paymentEl = document.getElementById("vip-payment");
   if (plansEl) plansEl.style.display = "";
@@ -1670,6 +1775,61 @@ function animateTrustNumbers() {
 }
 
 // 初始化
+// ---- Android 适配 ----
+(function() {
+  // 检测是否在 Capacitor/Android 环境
+  const isApp = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+
+  // Android 返回键处理
+  if (isApp || /android/i.test(navigator.userAgent)) {
+    document.addEventListener("backbutton", handleBackButton, false);
+    window.addEventListener("popstate", handleBackButton);
+    // 初始化 history 状态
+    if (!history.state) history.replaceState({page: "home"}, "");
+  }
+
+  function handleBackButton(e) {
+    // 优先关闭弹窗
+    const authModal = document.getElementById("auth-modal");
+    if (authModal && authModal.style.display !== "none") { closeAuthModal(); return; }
+    const vipModal = document.getElementById("vip-modal");
+    if (vipModal && vipModal.style.display !== "none") { closeVIPModal(); return; }
+    const settingsModal = document.getElementById("settings-modal");
+    if (settingsModal && settingsModal.style.display !== "none") { closeSettingsModal(); return; }
+
+    // 从结果/加载页返回首页
+    const resultPage = document.getElementById("page-result");
+    if (resultPage && resultPage.classList.contains("active")) { goBack(); return; }
+    const loadingPage = document.getElementById("page-loading");
+    if (loadingPage && loadingPage.classList.contains("active")) { showHome(); return; }
+    const errorPage = document.getElementById("page-error");
+    if (errorPage && errorPage.classList.contains("active")) { showHome(); return; }
+    const batchPage = document.getElementById("page-batch");
+    if (batchPage && batchPage.classList.contains("active")) { showHome(); return; }
+    const pfPage = document.getElementById("page-portfolio");
+    if (pfPage && pfPage.classList.contains("active")) { showHome(); return; }
+
+    // 在首页 -> 不退出（防止意外退出）
+  }
+
+  // 离线检测
+  function showOfflineBanner() {
+    if (document.getElementById("offline-banner")) return;
+    const banner = document.createElement("div");
+    banner.id = "offline-banner";
+    banner.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;text-align:center;padding:.6rem;font-size:.85rem;";
+    banner.textContent = "网络连接已断开，请检查网络设置";
+    document.body.appendChild(banner);
+  }
+  function hideOfflineBanner() {
+    const b = document.getElementById("offline-banner");
+    if (b) b.remove();
+  }
+  window.addEventListener("offline", showOfflineBanner);
+  window.addEventListener("online", hideOfflineBanner);
+  if (!navigator.onLine) showOfflineBanner();
+})();
+
 document.addEventListener("DOMContentLoaded", () => {
   initTheme();
   initAuth();

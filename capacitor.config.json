@@ -1,0 +1,16 @@
+{
+  "appId": "com.investmentradar.app",
+  "appName": "投资避雷",
+  "webDir": "static",
+  "server": {
+    "url": "https://investment-radar-production.up.railway.app",
+    "cleartext": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "backgroundColor": "#0d1117",
+      "showSpinner": false
+    }
+  }
+}

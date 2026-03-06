@@ -1,5 +1,7 @@
 /* ====================== 基础重置 ====================== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-tap-highlight-color: transparent; }
+body { -webkit-user-select: auto; overscroll-behavior-y: contain; }
 
 :root,
 [data-theme="dark"] {
@@ -1935,6 +1937,15 @@ a { color: var(--accent); text-decoration: none; }
   margin: 1rem auto;
   display: block;
 }
+.payment-qr-wrap {
+  display: flex; justify-content: center; align-items: center;
+  margin: 1rem auto; min-height: 200px;
+}
+.payment-poll-status {
+  font-size: .8rem; color: var(--accent); margin: .3rem 0 0;
+  animation: pollPulse 1.5s ease-in-out infinite;
+}
+@keyframes pollPulse { 0%,100% { opacity: .6; } 50% { opacity: 1; } }
 .payment-hint {
   font-size: .85rem;
   color: var(--text2);
@@ -2036,6 +2047,10 @@ a { color: var(--accent); text-decoration: none; }
 .footer-col span {
   font-size: .75rem; color: var(--text2);
 }
+.footer-link {
+  display: block; font-size: .75rem; color: var(--text2); text-decoration: none;
+}
+.footer-link:hover { color: var(--accent); text-decoration: underline; }
 
 .footer-bottom {
   max-width: 960px; margin: 0 auto;
@@ -2570,6 +2585,15 @@ a { color: var(--accent); text-decoration: none; }
 
 .auth-submit:hover { opacity: .9; }
 .auth-submit:disabled { opacity: .5; cursor: not-allowed; }
+
+.agree-check {
+  display: flex; align-items: center; gap: .4rem;
+  font-size: .8rem; color: var(--text2); cursor: pointer;
+  margin: -.2rem 0 .2rem;
+}
+.agree-check input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }
+.agree-check a { color: var(--accent); text-decoration: none; }
+.agree-check a:hover { text-decoration: underline; }
 
 .auth-forgot-link {
   text-align: center;

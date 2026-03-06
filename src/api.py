@@ -1,8 +1,11 @@
 """
 FastAPI 服务 - 投资避雷 API
 """
+import logging
 from datetime import datetime, timezone, timedelta
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
+
+logger = logging.getLogger(__name__)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
@@ -23,6 +26,7 @@ from src.models import init_db, get_db, User, Order, Favorite, ScanHistory
 from src.payment import (
     is_sandbox_mode, generate_order_no, create_payment_request,
     verify_payment_callback, get_plan_info, VIP_PLANS,
+    decrypt_wechat_callback, query_wechat_order,
 )
 from src.oauth import (
     get_available_oauth_providers, get_wechat_auth_url, get_github_auth_url,
@@ -105,6 +109,7 @@ class LoginRequest(BaseModel):
 
 class CreateOrderRequest(BaseModel):
     plan_type: str  # monthly / yearly / lifetime
+    payment_method: Optional[str] = "wechat"  # wechat / alipay
 
 
 class SendVerifyCodeRequest(BaseModel):
@@ -142,6 +147,24 @@ async def root():
     if index_file.exists():
         return FileResponse(str(index_file))
     return {"name": "投资避雷 API", "version": "2.0.0"}
+
+
+@app.get("/privacy")
+async def privacy_page():
+    """隐私政策页面"""
+    f = STATIC_DIR / "privacy.html"
+    if f.exists():
+        return FileResponse(str(f))
+    raise HTTPException(status_code=404)
+
+
+@app.get("/terms")
+async def terms_page():
+    """用户协议页面"""
+    f = STATIC_DIR / "terms.html"
+    if f.exists():
+        return FileResponse(str(f))
+    raise HTTPException(status_code=404)
 
 
 @app.get("/health")
@@ -246,7 +269,7 @@ async def create_order(
     await db.refresh(order)
 
     # 创建支付请求
-    payment_method = getattr(req, "payment_method", "alipay") or "alipay"
+    payment_method = req.payment_method or "wechat"
     payment = create_payment_request(
         order_no=order_no,
         amount=plan["price"],
@@ -383,6 +406,103 @@ async def list_plans():
             "days": plan["days"],
         })
     return {"plans": plans, "sandbox": is_sandbox_mode()}
+
+
+@app.post("/payment/wechat/notify")
+async def wechat_payment_notify(request: Request, db: AsyncSession = Depends(get_db)):
+    """微信支付回调通知"""
+    headers = dict(request.headers)
+    body = (await request.body()).decode("utf-8")
+
+    result = decrypt_wechat_callback(headers, body)
+    if not result.get("valid"):
+        logger.warning(f"微信回调验证失败: {result.get('error')}")
+        return {"code": "FAIL", "message": result.get("error", "验签失败")}
+
+    order_no = result["order_no"]
+    trade_no = result["trade_no"]
+
+    # 查找订单
+    stmt = select(Order).where(Order.trade_no == order_no)
+    r = await db.execute(stmt)
+    order = r.scalar_one_or_none()
+    if not order:
+        logger.error(f"微信回调: 订单不存在 {order_no}")
+        return {"code": "SUCCESS", "message": "OK"}
+
+    if order.status == "paid":
+        return {"code": "SUCCESS", "message": "OK"}
+
+    # 更新订单
+    plan = get_plan_info(order.plan_type)
+    if not plan:
+        return {"code": "SUCCESS", "message": "OK"}
+
+    now = datetime.now(timezone.utc)
+    order.status = "paid"
+    order.paid_at = now
+    order.payment_method = "wechat"
+
+    # 查找用户并激活 VIP
+    user_r = await db.execute(select(User).where(User.id == order.user_id))
+    user = user_r.scalar_one_or_none()
+    if user:
+        user.vip_level = plan["vip_level"]
+        if user.vip_expires_at and user.vip_expires_at > now:
+            user.vip_expires_at = user.vip_expires_at + timedelta(days=plan["days"])
+        else:
+            user.vip_expires_at = now + timedelta(days=plan["days"])
+
+    await db.commit()
+    logger.info(f"微信支付成功: order={order_no}, trade={trade_no}")
+    return {"code": "SUCCESS", "message": "OK"}
+
+
+@app.get("/payment/order-status/{order_no}")
+async def check_order_status(
+    order_no: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """查询订单支付状态（前端轮询用）"""
+    result = await db.execute(
+        select(Order).where(
+            Order.trade_no == order_no,
+            Order.user_id == current_user.id,
+        )
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="订单不存在")
+
+    if order.status == "paid":
+        return {
+            "status": "paid",
+            "user": user_to_dict(current_user),
+        }
+
+    # 如果本地未支付，主动查询微信（生产模式）
+    if not is_sandbox_mode() and order.payment_method != "sandbox":
+        wx_result = query_wechat_order(order_no)
+        if wx_result.get("success") and wx_result.get("trade_state") == "SUCCESS":
+            plan = get_plan_info(order.plan_type)
+            if plan:
+                now = datetime.now(timezone.utc)
+                order.status = "paid"
+                order.paid_at = now
+                order.payment_method = "wechat"
+                current_user.vip_level = plan["vip_level"]
+                if current_user.vip_expires_at and current_user.vip_expires_at > now:
+                    current_user.vip_expires_at += timedelta(days=plan["days"])
+                else:
+                    current_user.vip_expires_at = now + timedelta(days=plan["days"])
+                await db.commit()
+                return {
+                    "status": "paid",
+                    "user": user_to_dict(current_user),
+                }
+
+    return {"status": order.status}
 
 
 # ====================== 用户设置端点 ======================

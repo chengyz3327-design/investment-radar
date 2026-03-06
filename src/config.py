@@ -44,6 +44,9 @@ WECHAT_APP_ID = os.environ.get("WECHAT_APP_ID", "")
 WECHAT_MCH_ID = os.environ.get("WECHAT_MCH_ID", "")
 WECHAT_API_KEY = os.environ.get("WECHAT_API_KEY", "")
 WECHAT_NOTIFY_URL = os.environ.get("WECHAT_NOTIFY_URL", "")
+WECHAT_CERT_SERIAL_NO = os.environ.get("WECHAT_CERT_SERIAL_NO", "")
+WECHAT_APIV3_KEY = os.environ.get("WECHAT_APIV3_KEY", "")
+WECHAT_PRIVATE_KEY = os.environ.get("WECHAT_PRIVATE_KEY", "")
 
 # OAuth 第三方登录配置
 # 微信开放平台 (网站应用)
