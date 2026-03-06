@@ -9,7 +9,7 @@ env/
 .venv/
 .env
 
-# Data
+# Data (runtime)
 data/
 *.db
 *.sqlite3

@@ -855,16 +855,18 @@ function onSearchInput(e) {
   const q = e.target.value.trim();
   if (_searchTimer) clearTimeout(_searchTimer);
   if (q.length < 1) { hideDropdown(); return; }
-  _searchTimer = setTimeout(() => fetchSearchResults(q), 200);
+  _searchTimer = setTimeout(() => fetchSearchResults(q), 300);
 }
 
 async function fetchSearchResults(q) {
   try {
+    const dd = _searchDropdown();
+    dd.innerHTML = '<div class="search-loading">搜索中...</div>';
+    dd.style.display = "block";
     const resp = await fetch(`${API_BASE}/search?q=${encodeURIComponent(q)}`);
     const json = await resp.json();
     const results = json.results || [];
-    if (results.length === 0) { hideDropdown(); return; }
-    const dd = _searchDropdown();
+    if (results.length === 0) { dd.innerHTML = '<div class="search-loading">未找到结果</div>'; return; }
     dd.innerHTML = results.map(r => `
       <div class="search-item" onmousedown="selectSearchItem('${esc(r.code)}','${esc(r.name)}')">
         <span class="si-code">${esc(r.code)}</span>

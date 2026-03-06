@@ -89,12 +89,30 @@ class DataFetcher:
 
     def _get_stock_list(self) -> pd.DataFrame:
         now = time.time()
-        if self._stock_list_cache is None or (now - self._stock_list_time) > 3600:
-            self._stock_list_cache = ak.stock_info_a_code_name()
-            self._stock_list_cache['code'] = (
-                self._stock_list_cache['code'].astype(str).str.zfill(6)
-            )
-            self._stock_list_time = now
+        if self._stock_list_cache is None or (now - self._stock_list_time) > 86400:
+            # 优先使用内置静态股票列表（避免海外服务器访问慢）
+            try:
+                import os
+                csv_path = os.path.join(os.path.dirname(__file__), "data", "stock_list.csv")
+                if os.path.exists(csv_path):
+                    self._stock_list_cache = pd.read_csv(csv_path, dtype={"code": str})
+                    self._stock_list_cache['code'] = self._stock_list_cache['code'].str.zfill(6)
+                    self._stock_list_time = now
+                    logger.info(f"从静态文件加载 {len(self._stock_list_cache)} 只股票")
+                    return self._stock_list_cache
+            except Exception as e:
+                logger.warning(f"加载静态股票列表失败: {e}")
+            # 回退到在线获取
+            try:
+                self._stock_list_cache = ak.stock_info_a_code_name()
+                self._stock_list_cache['code'] = (
+                    self._stock_list_cache['code'].astype(str).str.zfill(6)
+                )
+                self._stock_list_time = now
+            except Exception as e:
+                logger.error(f"在线获取股票列表失败: {e}")
+                if self._stock_list_cache is None:
+                    self._stock_list_cache = pd.DataFrame(columns=['code', 'name'])
         return self._stock_list_cache
 
     def _get_ths_financial(self, stock_code: str) -> Optional[pd.DataFrame]:
