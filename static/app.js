@@ -1545,9 +1545,6 @@ async function loadServerHistory() {
     console.error("加载历史失败", err);
   }
 }
-  const days = Math.floor(hours / 24);
-  return days + "天前";
-}
 
 // ---- 风险雷达图 (SVG) ----
 function renderRiskRadar(riskItems) {
