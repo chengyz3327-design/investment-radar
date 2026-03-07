@@ -40,7 +40,7 @@ from src.auth import (
     get_current_user, get_optional_user, compute_vip_status, user_to_dict,
 )
 from src.email_utils import generate_verify_code, send_verify_email, send_reset_email, smtp_configured, smtp_test, email_configured
-from src.config import EMAIL_VERIFY_CODE_EXPIRE_MINUTES
+from src.config import EMAIL_VERIFY_CODE_EXPIRE_MINUTES, PAYMENT_MODE
 
 BASE_DIR = Path(__file__).parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -594,12 +594,23 @@ async def send_verify_code(
 
     ok = await send_verify_email(current_user.email, code)
     if not ok:
+        if PAYMENT_MODE == "sandbox":
+            # 沙盒模式：邮件发送失败时直接返回验证码，方便测试
+            return {
+                "message": "邮件发送失败，沙盒模式下直接返回验证码",
+                "code": code,
+                "sandbox": True,
+            }
         raise HTTPException(status_code=500, detail="邮件发送失败，请稍后重试")
 
-    return {
+    resp = {
         "message": "验证码已发送至 " + current_user.email,
         "smtp_configured": smtp_configured(),
     }
+    if PAYMENT_MODE == "sandbox":
+        resp["code"] = code
+        resp["sandbox"] = True
+    return resp
 
 
 @app.post("/auth/verify-email")
