@@ -1,5 +1,6 @@
 """
 邮件工具 - 发送验证码邮件
+支持 Resend HTTP API（推荐）和 SMTP 两种方式
 """
 import random
 import string
@@ -7,10 +8,16 @@ import logging
 from email.message import EmailMessage
 
 import aiosmtplib
+import httpx
 
-from src.config import SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM_NAME
+from src.config import (
+    SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, SMTP_FROM_NAME,
+    RESEND_API_KEY,
+)
 
 logger = logging.getLogger(__name__)
+
+RESEND_API_URL = "https://api.resend.com/emails"
 
 
 def generate_verify_code(length: int = 6) -> str:
@@ -23,17 +30,23 @@ def smtp_configured() -> bool:
     return bool(SMTP_HOST and SMTP_USER and SMTP_PASSWORD)
 
 
+def resend_configured() -> bool:
+    """检查 Resend API 是否已配置"""
+    return bool(RESEND_API_KEY)
+
+
+def email_configured() -> bool:
+    """检查是否有任何邮件发送方式已配置"""
+    return resend_configured() or smtp_configured()
+
+
 async def send_verify_email(to_email: str, code: str) -> bool:
     """发送验证码邮件，返回是否成功"""
-    if not smtp_configured():
-        logger.warning("SMTP 未配置，跳过邮件发送 (验证码: %s -> %s)", code, to_email)
-        return True  # 开发模式：未配置 SMTP 时直接返回成功
+    if not email_configured():
+        logger.warning("邮件未配置，跳过发送 (验证码: %s -> %s)", code, to_email)
+        return True  # 开发模式：未配置时直接返回成功
 
-    msg = EmailMessage()
-    msg["From"] = f"{SMTP_FROM_NAME} <{SMTP_USER}>"
-    msg["To"] = to_email
-    msg["Subject"] = f"【投资避雷】邮箱验证码: {code}"
-
+    subject = f"【投资避雷】邮箱验证码: {code}"
     html_body = f"""
     <div style="max-width:480px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;padding:32px 24px;border-radius:12px;">
       <div style="text-align:center;margin-bottom:24px;">
@@ -53,12 +66,10 @@ async def send_verify_email(to_email: str, code: str) -> bool:
       <p style="color:#94a3b8;font-size:12px;text-align:center;margin-top:16px;">如非本人操作，请忽略此邮件</p>
     </div>
     """
-
-    msg.set_content(f"您的投资避雷邮箱验证码是：{code}（10分钟内有效）")
-    msg.add_alternative(html_body, subtype="html")
+    text_body = f"您的投资避雷邮箱验证码是：{code}（10分钟内有效）"
 
     try:
-        await _send_smtp(msg)
+        await _send_email(to_email, subject, html_body, text_body)
         logger.info("验证码邮件已发送: %s", to_email)
         return True
     except Exception as e:
@@ -68,15 +79,11 @@ async def send_verify_email(to_email: str, code: str) -> bool:
 
 async def send_reset_email(to_email: str, code: str) -> bool:
     """发送密码重置验证码邮件"""
-    if not smtp_configured():
-        logger.warning("SMTP 未配置，跳过邮件发送 (重置码: %s -> %s)", code, to_email)
+    if not email_configured():
+        logger.warning("邮件未配置，跳过发送 (重置码: %s -> %s)", code, to_email)
         return True
 
-    msg = EmailMessage()
-    msg["From"] = f"{SMTP_FROM_NAME} <{SMTP_USER}>"
-    msg["To"] = to_email
-    msg["Subject"] = f"【投资避雷】密码重置验证码: {code}"
-
+    subject = f"【投资避雷】密码重置验证码: {code}"
     html_body = f"""
     <div style="max-width:480px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#fef2f2;padding:32px 24px;border-radius:12px;">
       <div style="text-align:center;margin-bottom:24px;">
@@ -96,17 +103,60 @@ async def send_reset_email(to_email: str, code: str) -> bool:
       <p style="color:#94a3b8;font-size:12px;text-align:center;margin-top:16px;">如非本人操作，请检查账号安全</p>
     </div>
     """
-
-    msg.set_content(f"您的投资避雷密码重置验证码是：{code}（10分钟内有效）")
-    msg.add_alternative(html_body, subtype="html")
+    text_body = f"您的投资避雷密码重置验证码是：{code}（10分钟内有效）"
 
     try:
-        await _send_smtp(msg)
+        await _send_email(to_email, subject, html_body, text_body)
         logger.info("重置密码邮件已发送: %s", to_email)
         return True
     except Exception as e:
         logger.error("邮件发送失败 (%s): %s", to_email, e)
         return False
+
+
+# ====================== 发送后端 ======================
+
+async def _send_email(to: str, subject: str, html: str, text: str):
+    """统一发送入口：优先 Resend HTTP API，回退 SMTP"""
+    if resend_configured():
+        await _send_resend(to, subject, html, text)
+    elif smtp_configured():
+        msg = EmailMessage()
+        msg["From"] = f"{SMTP_FROM_NAME} <{SMTP_USER}>"
+        msg["To"] = to
+        msg["Subject"] = subject
+        msg.set_content(text)
+        msg.add_alternative(html, subtype="html")
+        await _send_smtp(msg)
+    else:
+        raise RuntimeError("无可用的邮件发送配置")
+
+
+async def _send_resend(to: str, subject: str, html: str, text: str):
+    """通过 Resend HTTP API 发送邮件"""
+    from_addr = SMTP_USER if SMTP_USER else "onboarding@resend.dev"
+    payload = {
+        "from": f"{SMTP_FROM_NAME} <{from_addr}>",
+        "to": [to],
+        "subject": subject,
+        "html": html,
+        "text": text,
+    }
+    logger.info("Resend 发送: to=%s, from=%s", to, from_addr)
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            RESEND_API_URL,
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=15,
+        )
+        if resp.status_code >= 400:
+            logger.error("Resend API 错误: %d %s", resp.status_code, resp.text)
+            resp.raise_for_status()
+    logger.info("Resend 发送成功")
 
 
 async def _send_smtp(msg: EmailMessage):
@@ -155,19 +205,27 @@ async def _send_smtp(msg: EmailMessage):
 
 
 async def smtp_test() -> dict:
-    """测试 SMTP 连接（诊断用），自动尝试 465 和 587"""
+    """邮件发送诊断"""
     import asyncio
     result = {
-        "configured": smtp_configured(),
-        "host": SMTP_HOST,
-        "port": SMTP_PORT,
-        "user": SMTP_USER[:4] + "****" if SMTP_USER else "",
+        "resend_configured": resend_configured(),
+        "smtp_configured": smtp_configured(),
+        "smtp_host": SMTP_HOST,
+        "smtp_port": SMTP_PORT,
+        "smtp_user": SMTP_USER[:4] + "****" if SMTP_USER else "",
     }
-    if not smtp_configured():
-        result["error"] = "SMTP 未配置"
+
+    # 优先测试 Resend
+    if resend_configured():
+        result["resend_key"] = RESEND_API_KEY[:8] + "****"
+        result["status"] = "resend_ready"
         return result
 
-    # 尝试两个端口
+    if not smtp_configured():
+        result["status"] = "not_configured"
+        return result
+
+    # 测试 SMTP 两个端口
     for p in [587, 465]:
         try:
             smtp = aiosmtplib.SMTP(
@@ -180,7 +238,7 @@ async def smtp_test() -> dict:
             await smtp.connect()
             await smtp.login(SMTP_USER, SMTP_PASSWORD)
             await smtp.quit()
-            result["status"] = "ok"
+            result["status"] = "smtp_ok"
             result["working_port"] = p
             return result
         except asyncio.TimeoutError:
@@ -188,5 +246,6 @@ async def smtp_test() -> dict:
         except Exception as e:
             result[f"port_{p}"] = f"{type(e).__name__}: {e}"
 
-    result["status"] = "all_failed"
+    result["status"] = "smtp_all_failed"
+    result["hint"] = "SMTP 端口被屏蔽，请配置 RESEND_API_KEY 使用 HTTP 发送"
     return result
