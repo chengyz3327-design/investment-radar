@@ -58,14 +58,7 @@ async def send_verify_email(to_email: str, code: str) -> bool:
     msg.add_alternative(html_body, subtype="html")
 
     try:
-        await aiosmtplib.send(
-            msg,
-            hostname=SMTP_HOST,
-            port=SMTP_PORT,
-            username=SMTP_USER,
-            password=SMTP_PASSWORD,
-            use_tls=True,
-        )
+        await _send_smtp(msg)
         logger.info("验证码邮件已发送: %s", to_email)
         return True
     except Exception as e:
@@ -108,16 +101,36 @@ async def send_reset_email(to_email: str, code: str) -> bool:
     msg.add_alternative(html_body, subtype="html")
 
     try:
-        await aiosmtplib.send(
-            msg,
-            hostname=SMTP_HOST,
-            port=SMTP_PORT,
-            username=SMTP_USER,
-            password=SMTP_PASSWORD,
-            use_tls=True,
-        )
+        await _send_smtp(msg)
         logger.info("重置密码邮件已发送: %s", to_email)
         return True
     except Exception as e:
         logger.error("邮件发送失败 (%s): %s", to_email, e)
         return False
+
+
+async def _send_smtp(msg: EmailMessage):
+    """发送邮件，自动选择 TLS 模式"""
+    port = SMTP_PORT
+    if port == 465:
+        # 端口 465: 隐式 SSL/TLS
+        await aiosmtplib.send(
+            msg,
+            hostname=SMTP_HOST,
+            port=port,
+            username=SMTP_USER,
+            password=SMTP_PASSWORD,
+            use_tls=True,
+            timeout=15,
+        )
+    else:
+        # 端口 587 或其他: STARTTLS
+        await aiosmtplib.send(
+            msg,
+            hostname=SMTP_HOST,
+            port=port,
+            username=SMTP_USER,
+            password=SMTP_PASSWORD,
+            start_tls=True,
+            timeout=15,
+        )
