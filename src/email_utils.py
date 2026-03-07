@@ -134,7 +134,8 @@ async def _send_email(to: str, subject: str, html: str, text: str):
 
 async def _send_resend(to: str, subject: str, html: str, text: str):
     """通过 Resend HTTP API 发送邮件"""
-    from_addr = SMTP_USER if SMTP_USER else "onboarding@resend.dev"
+    # Resend 免费版只能用 onboarding@resend.dev 发送，除非已验证自定义域名
+    from_addr = "onboarding@resend.dev"
     payload = {
         "from": f"{SMTP_FROM_NAME} <{from_addr}>",
         "to": [to],
