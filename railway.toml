@@ -1,0 +1,12 @@
+[deploy]
+startCommand = "python main.py --api --port ${PORT:-8000}"
+healthcheckPath = "/health"
+healthcheckTimeout = 300
+
+[variables]
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = "465"
+SMTP_USER = "chengyz3327@gmail.com"
+SMTP_PASSWORD = "qdfscdyzqncehwcj"
+SMTP_FROM_NAME = "投资避雷"
+PAYMENT_MODE = "sandbox"
