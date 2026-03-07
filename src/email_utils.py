@@ -110,40 +110,52 @@ async def send_reset_email(to_email: str, code: str) -> bool:
 
 
 async def _send_smtp(msg: EmailMessage):
-    """发送邮件，自动选择 TLS 模式"""
+    """发送邮件，自动选择 TLS 模式，465 失败自动回退 587"""
     port = SMTP_PORT
     logger.info("SMTP 发送: host=%s, port=%d, user=%s", SMTP_HOST, port, SMTP_USER)
-    try:
-        if port == 465:
-            # 端口 465: 隐式 SSL/TLS
-            await aiosmtplib.send(
-                msg,
-                hostname=SMTP_HOST,
-                port=port,
-                username=SMTP_USER,
-                password=SMTP_PASSWORD,
-                use_tls=True,
-                timeout=15,
-            )
-        else:
-            # 端口 587 或其他: STARTTLS
-            await aiosmtplib.send(
-                msg,
-                hostname=SMTP_HOST,
-                port=port,
-                username=SMTP_USER,
-                password=SMTP_PASSWORD,
-                start_tls=True,
-                timeout=15,
-            )
-        logger.info("SMTP 发送成功")
-    except Exception as e:
-        logger.error("SMTP 发送异常: %s: %s", type(e).__name__, e)
-        raise
+
+    # 尝试顺序：配置端口优先，失败则回退另一个端口
+    ports_to_try = [port]
+    if port == 465:
+        ports_to_try.append(587)
+    elif port == 587:
+        ports_to_try.append(465)
+
+    last_error = None
+    for p in ports_to_try:
+        try:
+            if p == 465:
+                await aiosmtplib.send(
+                    msg,
+                    hostname=SMTP_HOST,
+                    port=p,
+                    username=SMTP_USER,
+                    password=SMTP_PASSWORD,
+                    use_tls=True,
+                    timeout=10,
+                )
+            else:
+                await aiosmtplib.send(
+                    msg,
+                    hostname=SMTP_HOST,
+                    port=p,
+                    username=SMTP_USER,
+                    password=SMTP_PASSWORD,
+                    start_tls=True,
+                    timeout=10,
+                )
+            logger.info("SMTP 发送成功 (port=%d)", p)
+            return
+        except Exception as e:
+            last_error = e
+            logger.warning("SMTP port %d 失败: %s: %s", p, type(e).__name__, e)
+
+    logger.error("SMTP 所有端口均失败")
+    raise last_error
 
 
 async def smtp_test() -> dict:
-    """测试 SMTP 连接（诊断用）"""
+    """测试 SMTP 连接（诊断用），自动尝试 465 和 587"""
     import asyncio
     result = {
         "configured": smtp_configured(),
@@ -155,22 +167,26 @@ async def smtp_test() -> dict:
         result["error"] = "SMTP 未配置"
         return result
 
-    try:
-        smtp = aiosmtplib.SMTP(
-            hostname=SMTP_HOST,
-            port=SMTP_PORT,
-            start_tls=SMTP_PORT != 465,
-            use_tls=SMTP_PORT == 465,
-            timeout=10,
-        )
-        await smtp.connect()
-        await smtp.login(SMTP_USER, SMTP_PASSWORD)
-        await smtp.quit()
-        result["status"] = "ok"
-    except asyncio.TimeoutError:
-        result["status"] = "timeout"
-        result["error"] = f"连接 {SMTP_HOST}:{SMTP_PORT} 超时（10秒）"
-    except Exception as e:
-        result["status"] = "error"
-        result["error"] = f"{type(e).__name__}: {e}"
+    # 尝试两个端口
+    for p in [587, 465]:
+        try:
+            smtp = aiosmtplib.SMTP(
+                hostname=SMTP_HOST,
+                port=p,
+                start_tls=p != 465,
+                use_tls=p == 465,
+                timeout=10,
+            )
+            await smtp.connect()
+            await smtp.login(SMTP_USER, SMTP_PASSWORD)
+            await smtp.quit()
+            result["status"] = "ok"
+            result["working_port"] = p
+            return result
+        except asyncio.TimeoutError:
+            result[f"port_{p}"] = "timeout"
+        except Exception as e:
+            result[f"port_{p}"] = f"{type(e).__name__}: {e}"
+
+    result["status"] = "all_failed"
     return result
