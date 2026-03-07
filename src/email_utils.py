@@ -112,25 +112,65 @@ async def send_reset_email(to_email: str, code: str) -> bool:
 async def _send_smtp(msg: EmailMessage):
     """发送邮件，自动选择 TLS 模式"""
     port = SMTP_PORT
-    if port == 465:
-        # 端口 465: 隐式 SSL/TLS
-        await aiosmtplib.send(
-            msg,
+    logger.info("SMTP 发送: host=%s, port=%d, user=%s", SMTP_HOST, port, SMTP_USER)
+    try:
+        if port == 465:
+            # 端口 465: 隐式 SSL/TLS
+            await aiosmtplib.send(
+                msg,
+                hostname=SMTP_HOST,
+                port=port,
+                username=SMTP_USER,
+                password=SMTP_PASSWORD,
+                use_tls=True,
+                timeout=15,
+            )
+        else:
+            # 端口 587 或其他: STARTTLS
+            await aiosmtplib.send(
+                msg,
+                hostname=SMTP_HOST,
+                port=port,
+                username=SMTP_USER,
+                password=SMTP_PASSWORD,
+                start_tls=True,
+                timeout=15,
+            )
+        logger.info("SMTP 发送成功")
+    except Exception as e:
+        logger.error("SMTP 发送异常: %s: %s", type(e).__name__, e)
+        raise
+
+
+async def smtp_test() -> dict:
+    """测试 SMTP 连接（诊断用）"""
+    import asyncio
+    result = {
+        "configured": smtp_configured(),
+        "host": SMTP_HOST,
+        "port": SMTP_PORT,
+        "user": SMTP_USER[:4] + "****" if SMTP_USER else "",
+    }
+    if not smtp_configured():
+        result["error"] = "SMTP 未配置"
+        return result
+
+    try:
+        smtp = aiosmtplib.SMTP(
             hostname=SMTP_HOST,
-            port=port,
-            username=SMTP_USER,
-            password=SMTP_PASSWORD,
-            use_tls=True,
-            timeout=15,
+            port=SMTP_PORT,
+            start_tls=SMTP_PORT != 465,
+            use_tls=SMTP_PORT == 465,
+            timeout=10,
         )
-    else:
-        # 端口 587 或其他: STARTTLS
-        await aiosmtplib.send(
-            msg,
-            hostname=SMTP_HOST,
-            port=port,
-            username=SMTP_USER,
-            password=SMTP_PASSWORD,
-            start_tls=True,
-            timeout=15,
-        )
+        await smtp.connect()
+        await smtp.login(SMTP_USER, SMTP_PASSWORD)
+        await smtp.quit()
+        result["status"] = "ok"
+    except asyncio.TimeoutError:
+        result["status"] = "timeout"
+        result["error"] = f"连接 {SMTP_HOST}:{SMTP_PORT} 超时（10秒）"
+    except Exception as e:
+        result["status"] = "error"
+        result["error"] = f"{type(e).__name__}: {e}"
+    return result

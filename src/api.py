@@ -39,7 +39,7 @@ from src.auth import (
     hash_password, verify_password, create_access_token,
     get_current_user, get_optional_user, compute_vip_status, user_to_dict,
 )
-from src.email_utils import generate_verify_code, send_verify_email, send_reset_email, smtp_configured
+from src.email_utils import generate_verify_code, send_verify_email, send_reset_email, smtp_configured, smtp_test
 from src.config import EMAIL_VERIFY_CODE_EXPIRE_MINUTES
 
 BASE_DIR = Path(__file__).parent.parent
@@ -170,6 +170,12 @@ async def terms_page():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "service": "investment-radar"}
+
+
+@app.get("/debug/smtp")
+async def debug_smtp():
+    """SMTP 连接诊断"""
+    return await smtp_test()
 
 
 @app.get("/search")
