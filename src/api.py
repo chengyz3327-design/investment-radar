@@ -39,7 +39,7 @@ from src.auth import (
     hash_password, verify_password, create_access_token,
     get_current_user, get_optional_user, compute_vip_status, user_to_dict,
 )
-from src.email_utils import generate_verify_code, send_verify_email, send_reset_email, smtp_configured, smtp_test
+from src.email_utils import generate_verify_code, send_verify_email, send_reset_email, smtp_configured, smtp_test, email_configured
 from src.config import EMAIL_VERIFY_CODE_EXPIRE_MINUTES
 
 BASE_DIR = Path(__file__).parent.parent
