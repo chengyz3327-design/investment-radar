@@ -31,7 +31,7 @@ SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SMTP_FROM_NAME = os.environ.get("SMTP_FROM_NAME", "投资避雷")
 
 # Resend HTTP 邮件 API（Railway 等屏蔽 SMTP 端口的平台使用）
-RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "re_GFMYLvLx_H84HWB4Gz3UZkxKiFn4FTnWK")
 
 # 支付配置
 PAYMENT_MODE = os.environ.get("PAYMENT_MODE", "sandbox")  # sandbox / production
