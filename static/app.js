@@ -2,6 +2,7 @@
 
 const API_BASE = "";
 let _fromBatch = false; // 记录是否从批量扫描进入
+let _currentPage = "page-home"; // 当前页面跟踪
 
 // ---- 认证状态管理 ----
 let _authState = {
@@ -908,11 +909,12 @@ function cancelPayment() {
 }
 
 // ---- 页面切换 ----
-function showPage(id) {
+function _switchPage(id) {
   document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
   const el = document.getElementById(id);
   if (el) el.classList.add("active");
   window.scrollTo(0, 0);
+  _currentPage = id;
   // 导航高亮
   const navHome = document.getElementById("nav-home");
   const navBatch = document.getElementById("nav-batch");
@@ -927,12 +929,16 @@ function showPage(id) {
   if (mbn) mbn.classList.add("active");
 }
 
+function showPage(id) {
+  _switchPage(id);
+  history.pushState({ page: id, fromBatch: _fromBatch }, "", "");
+}
+
 function showHome() { _fromBatch = false; showPage("page-home"); }
 function showBatchPage() { showPage("page-batch"); }
 function showPortfolioPage() { showPage("page-portfolio"); renderPfTable(); }
 function goBack() {
-  if (_fromBatch) { showPage("page-batch"); }
-  else { showHome(); }
+  history.back();
 }
 
 // ---- 搜索 / 扫描 ----
@@ -1007,7 +1013,7 @@ async function scanStock(code) {
     const el = document.getElementById("ls-" + i);
     if (el) { el.className = "ls-item" + (i === 1 ? " active" : ""); }
   }
-  showPage("page-loading");
+  _switchPage("page-loading"); // 过渡页不入 history
 
   // 模拟步骤推进
   const stepTimers = [
@@ -1030,13 +1036,17 @@ async function scanStock(code) {
       await new Promise(r => setTimeout(r, 300));
       renderResult(json.data);
       showPage("page-result");
+      // 显示部分数据缺失警告
+      if (json.warnings && json.warnings.length > 0) {
+        showWarningToast(json.warnings.join("；"));
+      }
     } else {
-      throw new Error("返回数据异常");
+      throw new Error(json.error || "返回数据异常");
     }
   } catch (e) {
     stepTimers.forEach(clearTimeout);
     document.getElementById("error-msg").textContent = e.message;
-    showPage("page-error");
+    _switchPage("page-error"); // 过渡页不入 history
   }
 }
 
@@ -1049,6 +1059,19 @@ function setLoadingStep(n, done) {
     else if (i === n) el.className = "ls-item active";
     else el.className = "ls-item";
   }
+}
+
+// ---- 警告提示 ----
+function showWarningToast(msg) {
+  // 移除已有的提示
+  const old = document.getElementById("warning-toast");
+  if (old) old.remove();
+  const toast = document.createElement("div");
+  toast.id = "warning-toast";
+  toast.style.cssText = "position:fixed;top:1rem;left:50%;transform:translateX(-50%);z-index:99999;background:#fef3c7;color:#92400e;border:1px solid #f59e0b;border-radius:.5rem;padding:.6rem 1rem;font-size:.82rem;max-width:90vw;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.12);";
+  toast.textContent = "⚠ " + msg;
+  document.body.appendChild(toast);
+  setTimeout(() => { if (toast.parentNode) toast.remove(); }, 6000);
 }
 
 // ---- 渲染结果 ----
@@ -1775,42 +1798,49 @@ function animateTrustNumbers() {
 }
 
 // 初始化
-// ---- Android 适配 ----
+// ---- 浏览器返回键全局处理 ----
 (function() {
-  // 检测是否在 Capacitor/Android 环境
-  const isApp = window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform();
+  // 初始化 history 状态（主页作为栈底）
+  history.replaceState({ page: "page-home", fromBatch: false }, "", "");
 
-  // Android 返回键处理
-  if (isApp || /android/i.test(navigator.userAgent)) {
-    document.addEventListener("backbutton", handleBackButton, false);
-    window.addEventListener("popstate", handleBackButton);
-    // 初始化 history 状态
-    if (!history.state) history.replaceState({page: "home"}, "");
-  }
-
-  function handleBackButton(e) {
+  // 全局 popstate 监听 — 处理浏览器 / 手势返回
+  window.addEventListener("popstate", function(e) {
     // 优先关闭弹窗
     const authModal = document.getElementById("auth-modal");
-    if (authModal && authModal.style.display !== "none") { closeAuthModal(); return; }
+    if (authModal && authModal.style.display !== "none") {
+      closeAuthModal();
+      history.pushState({ page: _currentPage, fromBatch: _fromBatch }, "", "");
+      return;
+    }
     const vipModal = document.getElementById("vip-modal");
-    if (vipModal && vipModal.style.display !== "none") { closeVIPModal(); return; }
+    if (vipModal && vipModal.style.display !== "none") {
+      closeVIPModal();
+      history.pushState({ page: _currentPage, fromBatch: _fromBatch }, "", "");
+      return;
+    }
     const settingsModal = document.getElementById("settings-modal");
-    if (settingsModal && settingsModal.style.display !== "none") { closeSettingsModal(); return; }
+    if (settingsModal && settingsModal.style.display !== "none") {
+      closeSettingsModal();
+      history.pushState({ page: _currentPage, fromBatch: _fromBatch }, "", "");
+      return;
+    }
 
-    // 从结果/加载页返回首页
-    const resultPage = document.getElementById("page-result");
-    if (resultPage && resultPage.classList.contains("active")) { goBack(); return; }
-    const loadingPage = document.getElementById("page-loading");
-    if (loadingPage && loadingPage.classList.contains("active")) { showHome(); return; }
-    const errorPage = document.getElementById("page-error");
-    if (errorPage && errorPage.classList.contains("active")) { showHome(); return; }
-    const batchPage = document.getElementById("page-batch");
-    if (batchPage && batchPage.classList.contains("active")) { showHome(); return; }
-    const pfPage = document.getElementById("page-portfolio");
-    if (pfPage && pfPage.classList.contains("active")) { showHome(); return; }
+    // 恢复页面状态
+    const targetPage = (e.state && e.state.page) ? e.state.page : "page-home";
 
-    // 在首页 -> 不退出（防止意外退出）
-  }
+    if (targetPage === "page-home") {
+      _switchPage("page-home");
+      _fromBatch = false;
+      // 防止继续后退导致页面关闭：在主页再压入一条记录
+      history.pushState({ page: "page-home", fromBatch: false }, "", "");
+    } else {
+      _fromBatch = (e.state && e.state.fromBatch) || false;
+      _switchPage(targetPage);
+    }
+  });
+
+  // Capacitor 返回键兼容
+  document.addEventListener("backbutton", function() { history.back(); }, false);
 
   // 离线检测
   function showOfflineBanner() {

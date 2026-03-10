@@ -1024,12 +1024,21 @@ async def scan_stock(
 
         report_dict = filter_vip_data(report_dict, has_pro)
 
-        return {"success": True, "data": report_dict}
+        return {
+            "success": True,
+            "data": report_dict,
+            "warnings": data.get("warnings", []),
+        }
 
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"扫描 {stock_code} 异常")
+        return {
+            "success": False,
+            "error": "扫描超时或服务繁忙，请稍后重试",
+            "retryable": True,
+        }
 
 
 @app.post("/scan")

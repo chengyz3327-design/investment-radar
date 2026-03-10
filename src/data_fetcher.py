@@ -4,7 +4,8 @@
 import akshare as ak
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Callable
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 import logging
 import time
 
@@ -27,6 +28,13 @@ class DataFetcher:
         self._daily_cache = {}
         self._cache_ttl = 300  # 5分钟
         self._quant_engine = QuantFactorEngine()
+        self._executor = ThreadPoolExecutor(max_workers=3)
+        # 超时与重试配置
+        self._timeout_daily = 15
+        self._timeout_financial = 15
+        self._timeout_pledge = 20
+        self._max_retries = 2
+        self._retry_base_delay = 1.0
 
     # ============================================================
     #  工具方法
@@ -83,6 +91,22 @@ class DataFetcher:
             return 'sh'
         return 'sz'
 
+    def _safe_call(self, func: Callable, timeout: float, desc: str):
+        """带超时和重试的安全调用包装器，返回 (result, warning_or_None)"""
+        for attempt in range(self._max_retries + 1):
+            try:
+                future = self._executor.submit(func)
+                result = future.result(timeout=timeout)
+                return result, None
+            except FutureTimeout:
+                logger.warning(f"{desc} 超时(第{attempt+1}次, {timeout}s)")
+            except Exception as e:
+                logger.warning(f"{desc} 异常(第{attempt+1}次): {type(e).__name__}: {e}")
+            if attempt < self._max_retries:
+                delay = self._retry_base_delay * (2 ** attempt)
+                time.sleep(delay)
+        return None, f"{desc}获取失败(超时或服务不可用)"
+
     # ============================================================
     #  缓存层
     # ============================================================
@@ -115,47 +139,56 @@ class DataFetcher:
                     self._stock_list_cache = pd.DataFrame(columns=['code', 'name'])
         return self._stock_list_cache
 
-    def _get_ths_financial(self, stock_code: str) -> Optional[pd.DataFrame]:
+    def _get_ths_financial(self, stock_code: str, warnings: List[str] = None) -> Optional[pd.DataFrame]:
         if stock_code not in self._ths_fin_cache:
-            try:
-                df = ak.stock_financial_abstract_ths(
+            def _fetch():
+                return ak.stock_financial_abstract_ths(
                     symbol=stock_code, indicator="按报告期"
                 )
-                self._ths_fin_cache[stock_code] = df if not df.empty else None
-            except Exception as e:
-                logger.warning(f"获取THS财务数据失败 {stock_code}: {e}")
+            result, warn = self._safe_call(_fetch, self._timeout_financial, f"THS财务数据({stock_code})")
+            if warn and warnings is not None:
+                warnings.append(warn)
+            if result is not None and not result.empty:
+                self._ths_fin_cache[stock_code] = result
+            else:
                 self._ths_fin_cache[stock_code] = None
         return self._ths_fin_cache[stock_code]
 
-    def _get_daily_data(self, stock_code: str) -> Optional[pd.DataFrame]:
+    def _get_daily_data(self, stock_code: str, warnings: List[str] = None) -> Optional[pd.DataFrame]:
         """获取并缓存52周日线数据（一次请求，多处复用）"""
         if stock_code in self._daily_cache:
             return self._daily_cache[stock_code]
-        try:
-            symbol = f"{self._get_market_prefix(stock_code)}{stock_code}"
-            end_date = datetime.now().strftime('%Y%m%d')
-            start_date = (datetime.now() - timedelta(days=365)).strftime('%Y%m%d')
-            df = ak.stock_zh_a_daily(
+        symbol = f"{self._get_market_prefix(stock_code)}{stock_code}"
+        end_date = datetime.now().strftime('%Y%m%d')
+        start_date = (datetime.now() - timedelta(days=365)).strftime('%Y%m%d')
+
+        def _fetch():
+            return ak.stock_zh_a_daily(
                 symbol=symbol, start_date=start_date,
                 end_date=end_date, adjust="qfq",
             )
-            self._daily_cache[stock_code] = df if not df.empty else None
-        except Exception as e:
-            logger.error(f"获取日线数据失败 {stock_code}: {e}")
+        result, warn = self._safe_call(_fetch, self._timeout_daily, f"日线数据({stock_code})")
+        if warn and warnings is not None:
+            warnings.append(warn)
+        if result is not None and not result.empty:
+            self._daily_cache[stock_code] = result
+        else:
             self._daily_cache[stock_code] = None
         return self._daily_cache[stock_code]
 
-    def _get_pledge_table(self) -> Optional[pd.DataFrame]:
+    def _get_pledge_table(self, warnings: List[str] = None) -> Optional[pd.DataFrame]:
         now = time.time()
-        if self._pledge_cache is None or (now - self._pledge_time) > 3600:
-            try:
-                self._pledge_cache = ak.stock_gpzy_pledge_ratio_em()
-                self._pledge_cache['股票代码'] = (
-                    self._pledge_cache['股票代码'].astype(str).str.zfill(6)
-                )
+        if self._pledge_cache is None or (now - self._pledge_time) > 7200:
+            def _fetch():
+                return ak.stock_gpzy_pledge_ratio_em()
+            result, warn = self._safe_call(_fetch, self._timeout_pledge, "质押数据表")
+            if warn and warnings is not None:
+                warnings.append(warn)
+            if result is not None:
+                result['股票代码'] = result['股票代码'].astype(str).str.zfill(6)
+                self._pledge_cache = result
                 self._pledge_time = now
-            except Exception as e:
-                logger.error(f"获取质押数据表失败: {e}")
+            else:
                 return None
         return self._pledge_cache
 
@@ -279,8 +312,8 @@ class DataFetcher:
     #  质押数据
     # ============================================================
 
-    def get_pledge_data(self, stock_code: str) -> Optional[Dict[str, Any]]:
-        table = self._get_pledge_table()
+    def get_pledge_data(self, stock_code: str, warnings: List[str] = None) -> Optional[Dict[str, Any]]:
+        table = self._get_pledge_table(warnings)
         if table is None:
             return {"pledge_ratio": 0, "pledge_count": 0}
         match = table[table['股票代码'] == stock_code]
@@ -385,11 +418,12 @@ class DataFetcher:
     def get_all_data(self, stock_code: str) -> Dict[str, Any]:
         stock_code = stock_code.zfill(6)
         logger.info(f"开始采集股票 {stock_code} 的数据...")
+        warnings: List[str] = []
 
         # 预加载缓存（减少重复调用）
         self.get_stock_info(stock_code)
-        self._get_ths_financial(stock_code)
-        self._get_daily_data(stock_code)
+        self._get_ths_financial(stock_code, warnings)
+        self._get_daily_data(stock_code, warnings)
 
         result = {
             "code": stock_code,
@@ -397,7 +431,7 @@ class DataFetcher:
             "basic_info": self.get_stock_info(stock_code),
             "price_info": self.get_stock_price(stock_code),
             "financial": self.get_financial_data(stock_code),
-            "pledge": self.get_pledge_data(stock_code),
+            "pledge": self.get_pledge_data(stock_code, warnings),
             "shareholder": self.get_shareholder_change(stock_code),
             "st_status": self.get_st_status(stock_code),
             "audit": self.get_audit_opinion(stock_code),
@@ -406,7 +440,8 @@ class DataFetcher:
             "receivables": self.get_receivables_data(stock_code),
             "price_history": self.get_price_history(stock_code),
             "quant_analysis": self.get_quant_analysis(stock_code),
+            "warnings": warnings,
         }
 
-        logger.info(f"股票 {stock_code} 数据采集完成")
+        logger.info(f"股票 {stock_code} 数据采集完成 (warnings: {len(warnings)})")
         return result
