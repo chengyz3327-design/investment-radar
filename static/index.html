@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>投资避雷 - 避开雷区，守护本金</title>
   <meta name="theme-color" content="#0d1117" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="投资避雷" />
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png" />
   <meta name="description" content="机构级量化风控引擎，基于Fama-French五因子、Markowitz-Sharpe等诺贝尔奖模型，为每只股票生成多维度量化风险评估报告" />
   <link rel="manifest" href="/static/manifest.json" />
   <link rel="stylesheet" href="/static/style.css" />
@@ -567,6 +570,11 @@
   </div>
 
   <script src="/static/app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/static/sw.js").catch(function(){});
+    }
+  </script>
 
   <!-- 登录/注册弹窗 -->
   <div id="auth-modal" class="auth-modal" style="display:none" onclick="if(event.target===this)closeAuthModal()">

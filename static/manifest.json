@@ -1,22 +1,30 @@
 {
-  "name": "投资避雷",
+  "name": "投资避雷 - 量化风控扫描",
   "short_name": "投资避雷",
-  "description": "机构级量化风控引擎 - 避开雷区，守护本金",
+  "description": "机构级量化风控引擎，基于诺贝尔奖模型为每只股票生成风险评估报告",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0d1117",
+  "background_color": "#0b0e17",
   "theme_color": "#0d1117",
   "icons": [
     {
-      "src": "/static/icon-192.png",
+      "src": "/static/icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
-      "src": "/static/icon-512.png",
+      "src": "/static/icons/icon-384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }
